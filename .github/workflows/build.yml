@@ -56,7 +56,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
       
-      # 🔥 暫時停用快取，強制重新下載所有依賴
+      #  暫時停用快取，強制重新下載所有依賴
       # - name: Cache west modules
       #   uses: actions/cache@v4
       #   env:
@@ -123,7 +123,7 @@ jobs:
             echo "✓ Created ${{ steps.variables.outputs.artifact-name }}.hex"
             ls -lh "build/artifacts/${{ steps.variables.outputs.artifact-name }}.hex"
           else
-            echo "❌ Error: No firmware file found"
+            echo " Error: No firmware file found"
             echo "Contents of build/zephyr:"
             ls -la build/zephyr/ 2>/dev/null || echo "Directory not found"
             exit 1
