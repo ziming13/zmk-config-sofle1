@@ -51,10 +51,11 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Install pip and setuptools
+      - name: Install pip and setuptools (apt)
         run: |
-          python3 -m ensurepip --upgrade
-          python3 -m pip install --upgrade pip setuptools
+          apt-get update
+          apt-get install -y python3-pip
+          python3 -m pip install --upgrade setuptools
 
       - name: Cache west modules
         uses: actions/cache@v4
