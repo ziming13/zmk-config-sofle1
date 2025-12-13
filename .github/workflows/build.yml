@@ -54,15 +54,12 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
       
-      # 靽桀儔 Python 3.12 ��� distutils ���憿�
-      - name: Install setuptools (Fix distutils)
-        run: |
-          python3 -m pip install --break-system-packages setuptools
+      
       
       - name: Cache west modules
         uses: actions/cache@v4
         env:
-          cache-name: cache-zephyr-modules
+          cache-name: cache-zephyr-3.5-modules
         with:
           path: |
             modules/
