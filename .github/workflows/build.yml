@@ -30,8 +30,7 @@ jobs:
     name: Build
     strategy:
       fail-fast: false
-      matrix: ${{ fromJson(needs.matrix.outputs.matrix) }}
-
+      matrix: ${{fromJson(needs.matrix.outputs.matrix)}}
     steps:
       - name: Prepare variables
         id: variables
@@ -51,6 +50,9 @@ jobs:
 
       - name: Checkout
         uses: actions/checkout@v4
+
+      - name: Install Python dependencies
+        run: python3 -m pip install --upgrade pip setuptools
 
       - name: Cache west modules
         uses: actions/cache@v4
@@ -80,23 +82,7 @@ jobs:
 
       - name: West Build (${{ steps.variables.outputs.display-name }})
         run: |
-          west build -s zmk/app -b ${{ matrix.board }} -- \
-            -DZMK_CONFIG=${GITHUB_WORKSPACE}/config \
-            ${{ steps.variables.outputs.extra-cmake-args }} \
-            ${{ matrix.cmake-args }}
-
-      - name: ${{ steps.variables.outputs.display-name }} DTS File
-        if: ${{ always() }}
-        run: |
-          if [ -f "build/zephyr/${{ matrix.board }}.dts.pre.tmp" ]; then
-            cat -n build/zephyr/${{ matrix.board }}.dts.pre.tmp
-          fi
-          if [ -f "build/zephyr/zephyr.dts" ]; then
-            cat -n build/zephyr/zephyr.dts
-          fi
-
-      - name: ${{ steps.variables.outputs.display-name }} Kconfig file
-        run: cat build/zephyr/.config | grep -v "^#" | grep -v "^$"
+          west build -s zmk/app -b ${{ matrix.board }} -- -DZMK_CONFIG=${GITHUB_WORKSPACE}/config ${{ steps.variables.outputs.extra-cmake-args }} ${{ matrix.cmake-args }}
 
       - name: Rename artifacts
         run: |
