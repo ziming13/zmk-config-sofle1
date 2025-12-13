@@ -1,54 +1,114 @@
-name: ZMK Build
+on: [push, pull_request, workflow_dispatch]
 
-on:
-  push:
-    branches:
-      - main
-  pull_request:
+name: Build
 
 jobs:
+  matrix:
+    runs-on: ubuntu-latest
+    name: Fetch Build Keyboards
+    outputs:
+      matrix: ${{ steps.set-matrix.outputs.matrix }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install yaml2json
+        run: python3 -m pip install remarshal
+
+      - id: set-matrix
+        name: Fetch Build Matrix
+        run: |
+          matrix=$(yaml2json build.yaml | jq -c .)
+          yaml2json build.yaml
+          echo "matrix=${matrix}" >> $GITHUB_OUTPUT
+
   build:
     runs-on: ubuntu-latest
+    container:
+      image: zmkfirmware/zmk-build-arm:stable
+    needs: matrix
+    name: Build
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJson(needs.matrix.outputs.matrix) }}
 
     steps:
-    # 1️⃣ Checkout repository
-    - name: Checkout code
-      uses: actions/checkout@v3
+      - name: Prepare variables
+        id: variables
+        run: |
+          if [ -n "${{ matrix.shield }}" ]; then
+            EXTRA_CMAKE_ARGS="-DSHIELD=${{ matrix.shield }}"
+            ARTIFACT_NAME="${{ matrix.shield }}-${{ matrix.board }}-zmk"
+            DISPLAY_NAME="${{ matrix.shield }} - ${{ matrix.board }}"
+          else
+            EXTRA_CMAKE_ARGS=
+            DISPLAY_NAME="${{ matrix.board }}"
+            ARTIFACT_NAME="${{ matrix.board }}-zmk"
+          fi
+          echo "extra-cmake-args=${EXTRA_CMAKE_ARGS}" >> $GITHUB_OUTPUT
+          echo "artifact-name=${ARTIFACT_NAME}" >> $GITHUB_OUTPUT
+          echo "display-name=${DISPLAY_NAME}" >> $GITHUB_OUTPUT
 
-    # 2️⃣ Install system dependencies
-    - name: Install dependencies
-      run: |
-        sudo apt-get update
-        sudo apt-get install -y \
-          git build-essential cmake ninja-build gcc-arm-none-eabi \
-          python3-dev python3-venv python3-setuptools python3-wheel python3-pip \
-          device-tree-compiler
+      - name: Checkout
+        uses: actions/checkout@v4
 
-    # 3️⃣ Setup Python virtual environment
-    - name: Setup Python venv
-      run: |
-        python3 -m venv .venv
-        source .venv/bin/activate
-        pip install --upgrade pip setuptools wheel
+      - name: Cache west modules
+        uses: actions/cache@v4
+        env:
+          cache-name: cache-zephyr-modules
+        with:
+          path: |
+            modules/
+            tools/
+            zephyr/
+            bootloader/
+            zmk/
+          key: ${{ runner.os }}-build-${{ env.cache-name }}-${{ hashFiles('manifest-dir/west.yml') }}
+          restore-keys: |
+            ${{ runner.os }}-build-${{ env.cache-name }}-
+            ${{ runner.os }}-build-
+            ${{ runner.os }}-
 
-    # 4️⃣ Activate venv for later steps
-    - name: Activate venv
-      shell: bash
-      run: |
-        source .venv/bin/activate
-        python --version
-        pip --version
+      - name: West Init
+        run: west init -l config
 
-    # 5️⃣ Build ZMK firmware
-    - name: Build ZMK firmware
-      shell: bash
-      run: |
-        source .venv/bin/activate
-        west build -p -b nice_nano ./app
+      - name: West Update
+        run: west update
 
-    # 6️⃣ Optional: Upload firmware artifact
-    - name: Upload firmware
-      uses: actions/upload-artifact@v3
-      with:
-        name: zmk-firmware
-        path: app/build/zephyr/zephyr.hex
+      - name: West Zephyr export
+        run: west zephyr-export
+
+      - name: West Build (${{ steps.variables.outputs.display-name }})
+        run: |
+          west build -s zmk/app -b ${{ matrix.board }} -- \
+            -DZMK_CONFIG=${GITHUB_WORKSPACE}/config \
+            ${{ steps.variables.outputs.extra-cmake-args }} \
+            ${{ matrix.cmake-args }}
+
+      - name: ${{ steps.variables.outputs.display-name }} DTS File
+        if: ${{ always() }}
+        run: |
+          if [ -f "build/zephyr/${{ matrix.board }}.dts.pre.tmp" ]; then
+            cat -n build/zephyr/${{ matrix.board }}.dts.pre.tmp
+          fi
+          if [ -f "build/zephyr/zephyr.dts" ]; then
+            cat -n build/zephyr/zephyr.dts
+          fi
+
+      - name: ${{ steps.variables.outputs.display-name }} Kconfig file
+        run: cat build/zephyr/.config | grep -v "^#" | grep -v "^$"
+
+      - name: Rename artifacts
+        run: |
+          mkdir -p build/artifacts
+          if [ -f build/zephyr/zmk.uf2 ]; then
+            cp build/zephyr/zmk.uf2 "build/artifacts/${{ steps.variables.outputs.artifact-name }}.uf2"
+          elif [ -f build/zephyr/zmk.hex ]; then
+            cp build/zephyr/zmk.hex "build/artifacts/${{ steps.variables.outputs.artifact-name }}.hex"
+          fi
+
+      - name: Archive (${{ steps.variables.outputs.display-name }})
+        uses: actions/upload-artifact@v4
+        with:
+          name: firmware
+          path: build/artifacts
