@@ -1,5 +1,6 @@
 on: [push, pull_request, workflow_dispatch]
 name: Build
+
 jobs:
   matrix:
     runs-on: ubuntu-latest
@@ -34,6 +35,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix: ${{ fromJson(needs.matrix.outputs.matrix) }}
+    
     steps:
       - name: Prepare variables
         id: variables
@@ -54,24 +56,23 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
       
-      
-      
-      - name: Cache west modules
-        uses: actions/cache@v4
-        env:
-          cache-name: cache-zephyr-3.5-modules
-        with:
-          path: |
-            modules/
-            tools/
-            zephyr/
-            bootloader/
-            zmk/
-          key: ${{ runner.os }}-build-${{ env.cache-name }}-${{ hashFiles('manifest-dir/west.yml') }}
-          restore-keys: |
-            ${{ runner.os }}-build-${{ env.cache-name }}-
-            ${{ runner.os }}-build-
-            ${{ runner.os }}-
+      # 🔥 暫時停用快取，強制重新下載所有依賴
+      # - name: Cache west modules
+      #   uses: actions/cache@v4
+      #   env:
+      #     cache-name: cache-zephyr-3.5-modules
+      #   with:
+      #     path: |
+      #       modules/
+      #       tools/
+      #       zephyr/
+      #       bootloader/
+      #       zmk/
+      #     key: ${{ runner.os }}-build-${{ env.cache-name }}-${{ hashFiles('manifest-dir/west.yml') }}
+      #     restore-keys: |
+      #       ${{ runner.os }}-build-${{ env.cache-name }}-
+      #       ${{ runner.os }}-build-
+      #       ${{ runner.os }}-
       
       - name: West Init
         run: west init -l config
@@ -83,7 +84,6 @@ jobs:
         run: west zephyr-export
       
       - name: West Build (${{ steps.variables.outputs.display-name }})
-        shell: sh -x {0}
         run: |
           west build -s zmk/app -b ${{ matrix.board }} -- \
             -DZMK_CONFIG=${GITHUB_WORKSPACE}/config \
@@ -105,8 +105,10 @@ jobs:
       - name: ${{ steps.variables.outputs.display-name }} Kconfig file
         if: ${{ always() }}
         run: |
-          echo "=== Active Kconfig Settings ==="
-          cat build/zephyr/.config | grep -v "^#" | grep -v "^$"
+          if [ -f "build/zephyr/.config" ]; then
+            echo "=== Active Kconfig Settings ==="
+            cat build/zephyr/.config | grep -v "^#" | grep -v "^$"
+          fi
       
       - name: Rename artifacts
         run: |
@@ -114,16 +116,16 @@ jobs:
           
           if [ -f build/zephyr/zmk.uf2 ]; then
             cp build/zephyr/zmk.uf2 "build/artifacts/${{ steps.variables.outputs.artifact-name }}.uf2"
-            echo "��� Created ${{ steps.variables.outputs.artifact-name }}.uf2"
+            echo "✓ Created ${{ steps.variables.outputs.artifact-name }}.uf2"
             ls -lh "build/artifacts/${{ steps.variables.outputs.artifact-name }}.uf2"
           elif [ -f build/zephyr/zmk.hex ]; then
             cp build/zephyr/zmk.hex "build/artifacts/${{ steps.variables.outputs.artifact-name }}.hex"
-            echo "��� Created ${{ steps.variables.outputs.artifact-name }}.hex"
+            echo "✓ Created ${{ steps.variables.outputs.artifact-name }}.hex"
             ls -lh "build/artifacts/${{ steps.variables.outputs.artifact-name }}.hex"
           else
-            echo "��� Error: No firmware file found (zmk.uf2 or zmk.hex)"
+            echo "❌ Error: No firmware file found"
             echo "Contents of build/zephyr:"
-            ls -la build/zephyr/ || true
+            ls -la build/zephyr/ 2>/dev/null || echo "Directory not found"
             exit 1
           fi
       
