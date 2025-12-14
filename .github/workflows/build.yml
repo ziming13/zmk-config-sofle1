@@ -1,13 +1,9 @@
 name: Build ZMK firmware
-
 on:
-  workflow_dispatch:  # 允許手動觸發
-  push:               # 每次 push 時自動建置
+  workflow_dispatch:
+  push:
     paths-ignore:
       - "keymap-drawer/**"
-      - "*.md"
-      - "*.txt"
-  pull_request:       # PR 時也建置
 
 jobs:
   build:
